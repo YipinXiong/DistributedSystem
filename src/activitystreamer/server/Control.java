@@ -3,18 +3,24 @@ package activitystreamer.server;
 import java.io.IOException;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.HashMap;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 
 import activitystreamer.util.Settings;
+ 
 
 public class Control extends Thread {
 	private static final Logger log = LogManager.getLogger();
 	private static ArrayList<Connection> connections;
 	private static boolean term=false;
 	private static Listener listener;
-	
+	private static HashMap<String,String> userList = new HashMap<String, String>();
+	private static ArrayList<Connection> clientList = new ArrayList<Connection>();
+	private static ArrayList<Connection> authenServer = new ArrayList<Connection>();
 	protected static Control control = null;
 	
 	public static Control getInstance() {
@@ -53,9 +59,52 @@ public class Control extends Thread {
 	 * Return true if the connection should close.
 	 */
 	public synchronized boolean process(Connection con,String msg){
+		JSONParser parser = new JSONParser();
+		try {
+			JSONObject msgJsonObj = (JSONObject) parser.parse(msg);
+			String command = (String) msgJsonObj.get("command");
+			//judge from command to know which the connection is from client or server.
+			if(command.equals("LOGIN")) {
+				String username = (String) msgJsonObj.get("username");
+				String password = (String) msgJsonObj.get("secret");
+				if(inUserList(username)&&userList.get(username)==password) {
+					
+					writeBack(con, command, true);
+					return false;
+				}
+				else {
+					writeBack(con, command, false);
+				}
+			}
+			else if(command.equals("LOGOUT")) {
+				return true;
+			}
+			else if(command.equals("ACTIVITY_MESSAGE")) {
+				//authentication is missing here
+				//write messages to every client connected to this server
+				//here, it should have been added an outer loop of server list. 
+				for(Connection clientConnection : clientList) {
+					clientConnection.writeMsg(msg);
+				}
+			}
+		} catch (Exception e) {
+			log.error("JSON parse error while parsing message");
+		} 
 		return true;
 	}
 	
+	private synchronized void writeBack(Connection con, String command, boolean result) {
+		// TODO Auto-generated method stub
+		if(command.equals("LOGIN")) {
+			System.out.println("Login Sucess");
+		}
+	}
+
+	private synchronized boolean inUserList(Object object) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
 	/*
 	 * The connection has been closed by the other party.
 	 */
@@ -92,6 +141,7 @@ public class Control extends Thread {
 			// do something with 5 second intervals in between
 			try {
 				Thread.sleep(Settings.getActivityInterval());
+				
 			} catch (InterruptedException e) {
 				log.info("received an interrupt, system is shutting down");
 				break;

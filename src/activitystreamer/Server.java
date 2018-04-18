@@ -45,7 +45,7 @@ public class Server {
 		
 		CommandLine cmd = null;
 		try {
-			cmd = parser.parse( options, args);
+			cmd = parser.parse(options, args);
 		} catch (ParseException e1) {
 			help(options);
 		}
