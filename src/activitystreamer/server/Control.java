@@ -20,7 +20,7 @@ public class Control extends Thread {
 	private static Listener listener;
 	private static HashMap<String,String> userList = new HashMap<String, String>();
 	private static ArrayList<Connection> clientList = new ArrayList<Connection>();
-//	private static ArrayList<Connection> authenServer = new ArrayList<Connection>();
+	private static ArrayList<Connection> serverList = new ArrayList<Connection>();
 	protected static Control control = null;
 	
 	public static Control getInstance() {
@@ -50,7 +50,7 @@ public class Control extends Thread {
 			 Connection	s1 = outgoingConnection(new Socket(Settings.getRemoteHostname(),Settings.getRemotePort()));
 			 JSONObject jsonObj = new JSONObject();
 			 jsonObj.put("command", "AUTHENTICATE");
-			 jsonObj.put("secret", "fmnmpp3ai91qb3gc2bvs14g3ue");
+			 jsonObj.put("secret", Settings.getSecret());
 			 s1.writeMsg(jsonObj.toJSONString());
 			} catch (IOException e) {
 				log.error("failed to make connection to "+Settings.getRemoteHostname()+":"+Settings.getRemotePort()+" :"+e);
@@ -63,11 +63,13 @@ public class Control extends Thread {
 	 * Processing incoming messages from the connection.
 	 * Return true if the connection should close.
 	 */
+	@SuppressWarnings("unchecked")
 	public synchronized boolean process(Connection con,String msg){
 		JSONParser parser = new JSONParser();
 		try {
 			JSONObject msgJsonObj = (JSONObject) parser.parse(msg);
 			String command = (String) msgJsonObj.get("command");
+			JSONObject returnJsonObj = new JSONObject();
 			//judge from command to know which the connection is from client or server.
 			/*If it is a client, add to the clientList
 			 * If it is a server, add to the serverList*/
@@ -83,9 +85,11 @@ public class Control extends Thread {
 					writeBack(con, command, false);
 				}
 			}
+			
 			else if(command.equals("LOGOUT")) {
 				return true;
 			}
+			
 			else if(command.equals("ACTIVITY_MESSAGE")) {
 				//authentication is missing here
 				//write messages to every client connected to this server
@@ -94,21 +98,36 @@ public class Control extends Thread {
 					client.writeMsg(msg);
 				}
 			}
+			
 			else if(command.equals("INVALID_MESSAGE")) {
 				String errInfo = (String) msgJsonObj.get("info");
 				log.error(errInfo);
+				return true;
 			}
+			
 			else if(command.equals("AUTHENTICATE")) {
 				String secret = (String) msgJsonObj.get("secret");
-				if(secret.equals("fmnmpp3ai91qb3gc2bvs14g3ue")) {
+				if(secret.equals(Settings.getSecret())) {
 					log.info("Successful connection!");
+					serverList.add(con);
 					return false;
 				} else {
-					log.info("connection False");
+					returnJsonObj.put("command", "AUTHENTICATION_FAIL");
+					returnJsonObj.put("info", "the supplied secret is incorrect:"+ secret);
+					con.writeMsg(returnJsonObj.toJSONString());
+					log.debug("connection Fails");
+					return true;
 				}
+			}
+			
+			else if(command.equals("AUTHENTICATION_FAIL")) {
+				String errInfo = (String) msgJsonObj.get("info");
+				log.debug(errInfo);
+				return true;
 			}
 		} catch (Exception e) {
 			log.error("JSON parse error while parsing message");
+			return true;
 		} 
 		return true;
 	}
