@@ -20,7 +20,7 @@ public class Control extends Thread {
 	private static Listener listener;
 	private static HashMap<String,String> userList = new HashMap<String, String>();
 	private static ArrayList<Connection> clientList = new ArrayList<Connection>();
-	private static ArrayList<Connection> authenServer = new ArrayList<Connection>();
+//	private static ArrayList<Connection> authenServer = new ArrayList<Connection>();
 	protected static Control control = null;
 	
 	public static Control getInstance() {
@@ -42,11 +42,16 @@ public class Control extends Thread {
 		}	
 	}
 	
+	@SuppressWarnings("unchecked")
 	public void initiateConnection(){
 		// make a connection to another server if remote hostname is supplied
 		if(Settings.getRemoteHostname()!=null){
 			try {
-				outgoingConnection(new Socket(Settings.getRemoteHostname(),Settings.getRemotePort()));
+			 Connection	s1 = outgoingConnection(new Socket(Settings.getRemoteHostname(),Settings.getRemotePort()));
+			 JSONObject jsonObj = new JSONObject();
+			 jsonObj.put("command", "AUTHENTICATE");
+			 jsonObj.put("secret", "fmnmpp3ai91qb3gc2bvs14g3ue");
+			 s1.writeMsg(jsonObj.toJSONString());
 			} catch (IOException e) {
 				log.error("failed to make connection to "+Settings.getRemoteHostname()+":"+Settings.getRemotePort()+" :"+e);
 				System.exit(-1);
@@ -64,11 +69,13 @@ public class Control extends Thread {
 			JSONObject msgJsonObj = (JSONObject) parser.parse(msg);
 			String command = (String) msgJsonObj.get("command");
 			//judge from command to know which the connection is from client or server.
+			/*If it is a client, add to the clientList
+			 * If it is a server, add to the serverList*/
 			if(command.equals("LOGIN")) {
 				String username = (String) msgJsonObj.get("username");
 				String password = (String) msgJsonObj.get("secret");
 				if(inUserList(username)&&userList.get(username)==password) {
-					
+					//handle writing back login success message.
 					writeBack(con, command, true);
 					return false;
 				}
@@ -83,8 +90,21 @@ public class Control extends Thread {
 				//authentication is missing here
 				//write messages to every client connected to this server
 				//here, it should have been added an outer loop of server list. 
-				for(Connection clientConnection : clientList) {
-					clientConnection.writeMsg(msg);
+				for(Connection client : clientList) {
+					client.writeMsg(msg);
+				}
+			}
+			else if(command.equals("INVALID_MESSAGE")) {
+				String errInfo = (String) msgJsonObj.get("info");
+				log.error(errInfo);
+			}
+			else if(command.equals("AUTHENTICATE")) {
+				String secret = (String) msgJsonObj.get("secret");
+				if(secret.equals("fmnmpp3ai91qb3gc2bvs14g3ue")) {
+					log.info("Successful connection!");
+					return false;
+				} else {
+					log.info("connection False");
 				}
 			}
 		} catch (Exception e) {
