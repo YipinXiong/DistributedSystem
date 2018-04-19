@@ -6,6 +6,10 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,8 +27,10 @@ public class Control extends Thread {
 	private static HashMap<String,String> userList = new HashMap<String, String>();
 	private static ArrayList<Connection> clientList = new ArrayList<Connection>();
 	private static ArrayList<Connection> serverList = new ArrayList<Connection>();
+	private static HashMap<String, Integer> serversLoad = new HashMap<String, Integer>();
+	private static HashMap<String, String[]> serversAddr = new HashMap<String, String[]>();
+	//
 	protected static Control control = null;
-	private static String id = Settings.getServerID(); 
 	
 	public static Control getInstance() {
 		if(control==null){
@@ -70,10 +76,11 @@ public class Control extends Thread {
 	@SuppressWarnings("unchecked")
 	public synchronized boolean process(Connection con,String msg){
 		JSONParser parser = new JSONParser();
+		JSONObject returnJsonObj = new JSONObject();
 		try {
 			JSONObject msgJsonObj = (JSONObject) parser.parse(msg);
 			String command = (String) msgJsonObj.get("command");
-			JSONObject returnJsonObj = new JSONObject();
+			//if no command, throw INVAID_MESSAGE;
 			//judge from command to know which the connection is from client or server.
 			/*If it is a client, add to the clientList
 			 * If it is a server, add to the serverList*/
@@ -97,19 +104,24 @@ public class Control extends Thread {
 				return true;
 			}
 			
+			
 			else if(command.equals("SERVER_ANNOUNCE")) {
-				for(Connection server: serverList) {
-					Socket serverSocket = server.getSocket();
-					String hostname = (String)msgJsonObj.get("hostname");
-				    int port = (int)msgJsonObj.get("port");
-				    @SuppressWarnings("resource")
-					Socket msgSocket = new Socket(hostname,port);
-					if(msgSocket.equals(serverSocket)) {
-						updateServerList(serverList);
-					}
-					
+				log.debug(msg);
+//						try{
+//							updateServersLoad(msgJsonObj,serversLoad,serversAddr);
+//							log.info("updated serverLoad list!");
+//							return false;
+//						} catch(Exception e) {
+//							log.debug("something wrong with updating");
+//							returnJsonObj.put("command", "INVALID_MESSAGE");
+//							returnJsonObj.put("info", "update error");
+//							con.closeCon();
+//							return true;
+//						}
 				}
-			}
+
+					
+		
 			
 			else if(command.equals("ACTIVITY_MESSAGE")) {
 				//authentication is missing here
@@ -129,6 +141,7 @@ public class Control extends Thread {
 			
 			else if(command.equals("AUTHENTICATE")) {
 				String secret = (String) msgJsonObj.get("secret");
+				
 				if(secret.equals(Settings.getSecret())) {
 					log.info("Successful connection!");
 					serverList.add(con);
@@ -149,16 +162,33 @@ public class Control extends Thread {
 				con.closeCon();
 				return true;
 			}
+			else {
+				returnJsonObj.put("command", "INVALID_MESSAGE");
+				returnJsonObj.put("info", "the received message did not contain a vaild command");
+				con.closeCon();
+				return true;
+			}
 		} catch (Exception e) {
-			log.error("JSON parse error while parsing message");
+			returnJsonObj.put("command", "INVALID_MESSAGE");
+			returnJsonObj.put("info","JSON parse error while parsing message");
 			con.closeCon();
 			return true;
 		} 
 		return true;
 	}
 	
-	private void updateServerList(ArrayList<Connection> serverList2) {
+	private synchronized void updateServersLoad (JSONObject msgJsonObj, HashMap<String, Integer> serversLoad,HashMap<String, String[]> serversAddr) throws Exception {
 		// TODO Auto-generated method stub
+		     String serverID = (String) msgJsonObj.get("id");
+		     Integer serverLoad = (Integer) msgJsonObj.get("load");
+		     String hostname = (String) msgJsonObj.get("Hostname");
+		     String port = (String) msgJsonObj.get("port");
+		     log.info(serverID+" "+ serverLoad+" "+hostname+" "+port);
+		     if(serverID.equals(null)||serverLoad==null||hostname.equals(null)||port.equals(null)) {
+		    	 throw new Exception();
+		     }
+		     serversLoad.put(serverID, serverLoad);
+		     serversAddr.put(serverID, new String[] {hostname,port});
 		
 	}
 
@@ -217,9 +247,11 @@ public class Control extends Thread {
 				server_announce.put("load", clientList.size()); 
 				server_announce.put("hostname",InetAddress.getLocalHost().toString());
 				server_announce.put("port", Settings.getLocalPort());
+				log.debug(server_announce.toJSONString());
 				for(Connection server : serverList) {
 					server.writeMsg(server_announce.toJSONString());
 				}
+//				log.info(server_announce.toString());
 			} catch (InterruptedException e) {
 				log.info("received an interrupt, system is shutting down");
 				break;
@@ -240,6 +272,17 @@ public class Control extends Thread {
 		}
 		listener.setTerm(true);
 	}
+    
+	public static synchronized <K, V extends Comparable<? super V>> Map<K, V> sortByValue(Map<K, V> map) {
+        List<Entry<K, V>> list = new ArrayList<>(map.entrySet());
+        list.sort(Entry.comparingByValue());
+        Map<K, V> result = new LinkedHashMap<>();
+        for (Entry<K, V> entry : list) {
+            result.put(entry.getKey(), entry.getValue());
+        }
+        return result;
+    }
+
 	
 	public boolean doActivity(){
 		return false;
