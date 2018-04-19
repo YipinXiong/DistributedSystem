@@ -1,7 +1,9 @@
 package activitystreamer.server;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -22,6 +24,7 @@ public class Control extends Thread {
 	private static ArrayList<Connection> clientList = new ArrayList<Connection>();
 	private static ArrayList<Connection> serverList = new ArrayList<Connection>();
 	protected static Control control = null;
+	private static String id = Settings.getServerID(); 
 	
 	public static Control getInstance() {
 		if(control==null){
@@ -36,6 +39,7 @@ public class Control extends Thread {
 		// start a listener
 		try {
 			listener = new Listener();
+			Settings.setSeverID();
 		} catch (IOException e1) {
 			log.fatal("failed to startup a listening thread: "+e1);
 			System.exit(-1);
@@ -83,11 +87,28 @@ public class Control extends Thread {
 				}
 				else {
 					writeBack(con, command, false);
+					con.closeCon();
+					return true;
 				}
 			}
 			
 			else if(command.equals("LOGOUT")) {
+				con.closeCon();
 				return true;
+			}
+			
+			else if(command.equals("SERVER_ANNOUNCE")) {
+				for(Connection server: serverList) {
+					Socket serverSocket = server.getSocket();
+					String hostname = (String)msgJsonObj.get("hostname");
+				    int port = (int)msgJsonObj.get("port");
+				    @SuppressWarnings("resource")
+					Socket msgSocket = new Socket(hostname,port);
+					if(msgSocket.equals(serverSocket)) {
+						updateServerList(serverList);
+					}
+					
+				}
 			}
 			
 			else if(command.equals("ACTIVITY_MESSAGE")) {
@@ -102,6 +123,7 @@ public class Control extends Thread {
 			else if(command.equals("INVALID_MESSAGE")) {
 				String errInfo = (String) msgJsonObj.get("info");
 				log.error(errInfo);
+				con.closeCon();
 				return true;
 			}
 			
@@ -116,6 +138,7 @@ public class Control extends Thread {
 					returnJsonObj.put("info", "the supplied secret is incorrect:"+ secret);
 					con.writeMsg(returnJsonObj.toJSONString());
 					log.debug("connection Fails");
+					con.closeCon();
 					return true;
 				}
 			}
@@ -123,15 +146,22 @@ public class Control extends Thread {
 			else if(command.equals("AUTHENTICATION_FAIL")) {
 				String errInfo = (String) msgJsonObj.get("info");
 				log.debug(errInfo);
+				con.closeCon();
 				return true;
 			}
 		} catch (Exception e) {
 			log.error("JSON parse error while parsing message");
+			con.closeCon();
 			return true;
 		} 
 		return true;
 	}
 	
+	private void updateServerList(ArrayList<Connection> serverList2) {
+		// TODO Auto-generated method stub
+		
+	}
+
 	private synchronized void writeBack(Connection con, String command, boolean result) {
 		// TODO Auto-generated method stub
 		if(command.equals("LOGIN")) {
@@ -173,6 +203,7 @@ public class Control extends Thread {
 		
 	}
 	
+	@SuppressWarnings("unchecked")
 	@Override
 	public void run(){
 		log.info("using activity interval of "+Settings.getActivityInterval()+" milliseconds");
@@ -180,10 +211,21 @@ public class Control extends Thread {
 			// do something with 5 second intervals in between
 			try {
 				Thread.sleep(Settings.getActivityInterval());
-				
+				JSONObject server_announce = new JSONObject();
+				server_announce.put("command", "SERVER_ANNOUNCE");
+				server_announce.put("id", Settings.getServerID());
+				server_announce.put("load", clientList.size()); 
+				server_announce.put("hostname",InetAddress.getLocalHost().toString());
+				server_announce.put("port", Settings.getLocalPort());
+				for(Connection server : serverList) {
+					server.writeMsg(server_announce.toJSONString());
+				}
 			} catch (InterruptedException e) {
 				log.info("received an interrupt, system is shutting down");
 				break;
+			} catch (UnknownHostException e) {
+				// TODO Auto-generated catch block
+				log.error("Unknown Host IP");
 			}
 			if(!term){
 				log.debug("doing activity");

@@ -17,6 +17,7 @@ public class Settings {
 	private static int activityInterval = 5000; // milliseconds
 	private static String secret = null;
 	private static String username = "anonymous";
+	private static String serverID = null;
 
 	
 	public static int getLocalPort() {
@@ -67,6 +68,10 @@ public class Settings {
 		secret = s;
 	}
 	
+	public static void setSeverID() {
+		serverID = nextSecret(); 
+	}
+	
 	public static String getUsername() {
 		return username;
 	}
@@ -87,6 +92,9 @@ public class Settings {
 	/*
 	 * some general helper functions
 	 */
+	public static String getServerID() {
+		return serverID;
+	}
 	
 	public static String socketAddress(Socket socket){
 		return socket.getInetAddress()+":"+socket.getPort();
