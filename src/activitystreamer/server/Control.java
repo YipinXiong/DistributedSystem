@@ -27,7 +27,7 @@ public class Control extends Thread {
 	private static HashMap<String,String> userList = new HashMap<String, String>();
 	private static ArrayList<Connection> clientList = new ArrayList<Connection>();
 	private static ArrayList<Connection> serverList = new ArrayList<Connection>();
-	private static HashMap<String, Integer> serversLoad = new HashMap<String, Integer>();
+	private static HashMap<String, Number> serversLoad = new HashMap<String, Number>();
 	private static HashMap<String, String[]> serversAddr = new HashMap<String, String[]>();
 	//
 	protected static Control control = null;
@@ -62,6 +62,7 @@ public class Control extends Thread {
 			 jsonObj.put("command", "AUTHENTICATE");
 			 jsonObj.put("secret", Settings.getSecret());
 			 s1.writeMsg(jsonObj.toJSONString());
+			 serverList.add(s1);
 			} catch (IOException e) {
 				log.error("failed to make connection to "+Settings.getRemoteHostname()+":"+Settings.getRemotePort()+" :"+e);
 				System.exit(-1);
@@ -106,18 +107,18 @@ public class Control extends Thread {
 			
 			
 			else if(command.equals("SERVER_ANNOUNCE")) {
-				log.debug(msg);
-//						try{
-//							updateServersLoad(msgJsonObj,serversLoad,serversAddr);
-//							log.info("updated serverLoad list!");
-//							return false;
-//						} catch(Exception e) {
-//							log.debug("something wrong with updating");
-//							returnJsonObj.put("command", "INVALID_MESSAGE");
-//							returnJsonObj.put("info", "update error");
-//							con.closeCon();
-//							return true;
-//						}
+				log.info(msg);
+						try{
+							updateServersLoad(msgJsonObj,serversLoad,serversAddr);
+							log.info("updated serverLoad list!");
+							return false;
+						} catch(Exception e) {
+							log.debug("something wrong with updating");
+							returnJsonObj.put("command", "INVALID_MESSAGE");
+							returnJsonObj.put("info", "update error");
+							con.closeCon();
+							return true;
+						}
 				}
 
 					
@@ -141,10 +142,10 @@ public class Control extends Thread {
 			
 			else if(command.equals("AUTHENTICATE")) {
 				String secret = (String) msgJsonObj.get("secret");
-				
 				if(secret.equals(Settings.getSecret())) {
 					log.info("Successful connection!");
 					serverList.add(con);
+					
 					return false;
 				} else {
 					returnJsonObj.put("command", "AUTHENTICATION_FAIL");
@@ -177,18 +178,28 @@ public class Control extends Thread {
 		return true;
 	}
 	
-	private synchronized void updateServersLoad (JSONObject msgJsonObj, HashMap<String, Integer> serversLoad,HashMap<String, String[]> serversAddr) throws Exception {
+//	private void updateServersLoad(JSONObject msgJsonObj, HashMap<String, Number> serversLoad2,
+//			HashMap<String, String[]> serversAddr2) {
+//		// TODO Auto-generated method stub
+//		
+//	}
+
+	private synchronized void updateServersLoad (JSONObject msgJsonObj, HashMap<String, Number> serversLoad,HashMap<String, String[]> serversAddr)  throws Exception {
 		// TODO Auto-generated method stub
 		     String serverID = (String) msgJsonObj.get("id");
-		     Integer serverLoad = (Integer) msgJsonObj.get("load");
-		     String hostname = (String) msgJsonObj.get("Hostname");
-		     String port = (String) msgJsonObj.get("port");
+		     log.info(serverID);
+		     Number serverLoad = (Number) msgJsonObj.get("load");
+		     log.info(serverLoad);
+		     String hostname = (String) msgJsonObj.get("hostname");
+		     log.info(hostname);
+		     Number port = (Number) msgJsonObj.get("port");
+		     log.info(port);
 		     log.info(serverID+" "+ serverLoad+" "+hostname+" "+port);
 		     if(serverID.equals(null)||serverLoad==null||hostname.equals(null)||port.equals(null)) {
 		    	 throw new Exception();
 		     }
 		     serversLoad.put(serverID, serverLoad);
-		     serversAddr.put(serverID, new String[] {hostname,port});
+		     serversAddr.put(serverID, new String[] {hostname,Integer.toString(port.intValue())});
 		
 	}
 
