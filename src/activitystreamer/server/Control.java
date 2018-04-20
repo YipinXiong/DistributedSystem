@@ -30,6 +30,7 @@ public class Control extends Thread {
 	private static ArrayList<Connection> serverList = new ArrayList<Connection>();
 	private static HashMap<String, Integer> serversLoad = new HashMap<String, Integer>();
 	private static HashMap<String, String[]> serversAddr = new HashMap<String, String[]>();
+	
 
 	protected static Control control = null;
 	
@@ -78,13 +79,8 @@ public class Control extends Thread {
 	 */
 	@SuppressWarnings("unchecked")
 	public synchronized boolean process(Connection con,String msg){
-//		for(Connection server : serverList) {
-//			if(server.equals(con)) {
-//				log.info("it works!!!");
-//			} else {
-//				log.info("They are different!!");
-//			}
-//		}
+		//loggedUser uses as flag which indicates currently logged username 
+		String loggedUser = null;
 		JSONParser parser = new JSONParser();
 		JSONObject returnJsonObj = new JSONObject();
 		try {
@@ -100,6 +96,7 @@ public class Control extends Thread {
 				String password = (String) msgJsonObj.get("secret");
 				if(username.equals("anonymous")) {
 					clientList.add(con);
+					loggedUser = username;
 					returnJsonObj.put("command", "LOGIN_SUCCESS");
 					returnJsonObj.put("info", "logged in as anonymous");
 					con.writeMsg(returnJsonObj.toJSONString());
@@ -111,6 +108,7 @@ public class Control extends Thread {
 				}
 				else {
 					if(userList.containsKey(username)&&password.equals(userList.get(username))) {
+						loggedUser = username;
 						returnJsonObj.put("command", "LOGIN_SUCCESS");
 						returnJsonObj.put("info", "logged in as "+username);
 						con.writeMsg(returnJsonObj.toJSONString());
@@ -123,14 +121,18 @@ public class Control extends Thread {
 						return true;
 					}
 				}
-				if(checkRedirect()) {
-					String[] address= minLoad(serversLoad, serversLoad.get(Settings.getServerID()).intValue());
+
+				if(checkRedirect(clientList.size(), serversLoad)) {
+					String[] address= minLoadServerAddrs(serversLoad, serversAddr);
 					returnJsonObj.put("command", "REDIRECT");
 					returnJsonObj.put("hostname", address[0]);
-					returnJsonObj.put("port", address[1]);
+					returnJsonObj.put("port", Integer.parseInt(address[1]));
 					con.writeMsg(returnJsonObj.toJSONString());
+					clientList.remove(con);
 					con.closeCon();
-				} else {
+					return true;
+				} 
+				else {
 					clientList.add(con);
 				}
 				return false;
@@ -140,9 +142,54 @@ public class Control extends Thread {
 			
 			else if(command.equals("LOGOUT")) {
 				con.closeCon();
+				clientList.remove(con);
 				return true;
 			}
 			
+			else if(command.equals("ACTIVITY_MESSAGE")) {
+				String username = (String) msgJsonObj.get("username");
+			    String password = (String) msgJsonObj.get("secret");
+			    JSONObject activity = (JSONObject) msgJsonObj.get("activity");
+			    if(username==null||password==null||activity==null){
+			    	throw new Exception();
+			    }
+			    // autenCheck needs to check 1. user login or not(whether in clientList) 
+			    // 2. check where the pair of secret and user is consisted with the logged user;
+			    if(authenCheck(loggedUser, username, password, userList)) {
+	    			log.info("pass the authentication!");
+			    	for(Connection client: clientList) {
+			    		if(client.equals(con)) {
+			    			continue;
+			    		}
+			    		else {
+			    			returnJsonObj.put("command", "ACTIVITY_BROADCAST");
+			    			returnJsonObj.put("activity", activity);
+			    		    client.writeMsg(returnJsonObj.toJSONString());
+			    		}
+			    	}
+			    	for(Connection server: serverList) {
+			    		if(server.equals(con)) {
+			    			continue;
+			    		}
+			    		else {
+			    			returnJsonObj.put("command", "ACTIVITY_BROADCAST");
+			    			returnJsonObj.put("activity", activity);
+			    		    server.writeMsg(returnJsonObj.toJSONString());
+			    		}
+			    	}
+			    	return false;
+			    }
+			    else {
+			    	//AUTHENTICATION_FAIL
+					returnJsonObj.put("command", "AUTHENTICATION_FAIL");
+					returnJsonObj.put("info", "the supplied secret is incorrect:"+ password);
+					con.writeMsg(returnJsonObj.toJSONString());
+					log.debug("connection Fails for aunthentication_fail");
+					clientList.remove(con);
+					con.closeCon();
+					return true;
+			    }
+			}
 			
 			else if(command.equals("SERVER_ANNOUNCE")) {
 				for(Connection server: serverList) {
@@ -182,15 +229,6 @@ public class Control extends Thread {
 				return false;
 				}	
 		
-			
-			else if(command.equals("ACTIVITY_MESSAGE")) {
-				//authentication is missing here
-				//write messages to every client connected to this server
-				//here, it should have been added an outer loop of server list. 
-				for(Connection client : clientList) {
-					client.writeMsg(msg);
-				}
-			}
 			
 			else if(command.equals("INVALID_MESSAGE")) {
 				String errInfo = (String) msgJsonObj.get("info");
@@ -233,21 +271,30 @@ public class Control extends Thread {
 			con.closeCon();
 			return true;
 		} 
-		return false;
 	}
 	
-	private boolean checkRedirect() {
-		// TODO Auto-generated method stub
+	private boolean authenCheck(String loggedUser, String username, String password, HashMap<String, String> userList) {
+		if(loggedUser.equals(username)&&password.equals(userList.get(username))) {
+		return true;
+		}
 		return false;
 	}
 
-	private String[] minLoad(HashMap<String,Integer> hashMap, int load) {
-		Map<String, Integer>sortHashMap = sortByValue(hashMap);
-		 Map.Entry<String,Integer> entry = sortHashMap.entrySet().iterator().next();
-		 String key = entry.getKey();
-		 int value = entry.getValue().intValue();
-//		 if()
-		return null;
+	private boolean checkRedirect(int curLoad, HashMap<String,Integer> serversLoad) {
+		Map<String, Integer>sortedServersLoad = sortByValue(serversLoad);
+		Map.Entry<String,Integer> entry = sortedServersLoad.entrySet().iterator().next();
+		int value = entry.getValue().intValue();
+		if(curLoad-2>=value) {
+			return true;
+		}
+		return false;
+	}
+
+	private String[] minLoadServerAddrs(HashMap<String,Integer> serversLoad, HashMap<String, String[]> serversAddr) {
+		Map<String, Integer>sortedServersLoad = sortByValue(serversLoad);
+		Map.Entry<String,Integer> entry = sortedServersLoad.entrySet().iterator().next();
+		String key = entry.getKey();
+		return serversAddr.get(key);
 	}
 
 	// update lists related to servers.
@@ -263,7 +310,7 @@ public class Control extends Thread {
 //		     log.info(port);
 		     log.info(serverID+" "+ serverLoad+" "+hostname+" "+port);
 //		     serverID.equals(null)||serverLoad.equals(null)||hostname.equals(null)||port.equals(null)
-		     if(serverID.equals(null)||serverLoad.equals(null)||hostname.equals(null)||port.equals(null)) {
+		     if(serverID==null||serverLoad==null||hostname==null||port==null) {
 		    	 throw new Exception();
 		     }
 		     serversLoad.put(serverID, new Integer(serverLoad.intValue()));
@@ -334,6 +381,7 @@ public class Control extends Thread {
 				// TODO Auto-generated catch block
 				log.error("Unknown Host IP");
 			}
+			//all above things are for servers; the following one is to handle activity from 
 			if(!term){
 				log.debug("doing activity");
 				term=doActivity();
