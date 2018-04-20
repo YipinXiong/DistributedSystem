@@ -24,12 +24,13 @@ public class Control extends Thread {
 	private static ArrayList<Connection> connections;
 	private static boolean term=false;
 	private static Listener listener;
+	//userList is used to record registered users.
 	private static HashMap<String,String> userList = new HashMap<String, String>();
 	private static ArrayList<Connection> clientList = new ArrayList<Connection>();
 	private static ArrayList<Connection> serverList = new ArrayList<Connection>();
-	private static HashMap<String, Number> serversLoad = new HashMap<String, Number>();
+	private static HashMap<String, Integer> serversLoad = new HashMap<String, Integer>();
 	private static HashMap<String, String[]> serversAddr = new HashMap<String, String[]>();
-	//
+
 	protected static Control control = null;
 	
 	public static Control getInstance() {
@@ -46,6 +47,7 @@ public class Control extends Thread {
 		try {
 			listener = new Listener();
 			Settings.setSeverID();
+			userList.put("anonymous", "THIS IS NOT ALLOWED TO REGISTERD");
 		} catch (IOException e1) {
 			log.fatal("failed to startup a listening thread: "+e1);
 			System.exit(-1);
@@ -76,29 +78,65 @@ public class Control extends Thread {
 	 */
 	@SuppressWarnings("unchecked")
 	public synchronized boolean process(Connection con,String msg){
+//		for(Connection server : serverList) {
+//			if(server.equals(con)) {
+//				log.info("it works!!!");
+//			} else {
+//				log.info("They are different!!");
+//			}
+//		}
 		JSONParser parser = new JSONParser();
 		JSONObject returnJsonObj = new JSONObject();
 		try {
 			JSONObject msgJsonObj = (JSONObject) parser.parse(msg);
 			String command = (String) msgJsonObj.get("command");
-			//if no command, throw INVAID_MESSAGE;
-			//judge from command to know which the connection is from client or server.
-			/*If it is a client, add to the clientList
-			 * If it is a server, add to the serverList*/
+			
+			if(command.equals(null)) {
+				throw new Exception();
+			}
+			
 			if(command.equals("LOGIN")) {
 				String username = (String) msgJsonObj.get("username");
 				String password = (String) msgJsonObj.get("secret");
-				if(inUserList(username)&&userList.get(username)==password) {
-					//handle writing back login success message.
-					writeBack(con, command, true);
-					return false;
+				if(username.equals("anonymous")) {
+					clientList.add(con);
+					returnJsonObj.put("command", "LOGIN_SUCCESS");
+					returnJsonObj.put("info", "logged in as anonymous");
+					con.writeMsg(returnJsonObj.toJSONString());
 				}
-				else {
-					writeBack(con, command, false);
+				else if(username.equals(null)) {
+					writeBack(con, msg, false);
 					con.closeCon();
 					return true;
 				}
+				else {
+					if(userList.containsKey(username)&&password.equals(userList.get(username))) {
+						returnJsonObj.put("command", "LOGIN_SUCCESS");
+						returnJsonObj.put("info", "logged in as "+username);
+						con.writeMsg(returnJsonObj.toJSONString());
+					}
+					else {
+						returnJsonObj.put("command", "LOGIN_FAILED");
+						returnJsonObj.put("info", "attempt to login with wrong secret");
+						con.writeMsg(returnJsonObj.toJSONString());
+						con.closeCon();
+						return true;
+					}
+				}
+				if(checkRedirect()) {
+					String[] address= minLoad(serversLoad, serversLoad.get(Settings.getServerID()).intValue());
+					returnJsonObj.put("command", "REDIRECT");
+					returnJsonObj.put("hostname", address[0]);
+					returnJsonObj.put("port", address[1]);
+					con.writeMsg(returnJsonObj.toJSONString());
+					con.closeCon();
+				} else {
+					clientList.add(con);
+				}
+				return false;
 			}
+			
+
 			
 			else if(command.equals("LOGOUT")) {
 				con.closeCon();
@@ -107,21 +145,42 @@ public class Control extends Thread {
 			
 			
 			else if(command.equals("SERVER_ANNOUNCE")) {
-				log.info(msg);
+				for(Connection server: serverList) {
+					//if announce was sent for yourself, update local lists.
+					if(server.equals(con)) {
+						log.info("Hey, it's me!! Try other conncetion!");
 						try{
 							updateServersLoad(msgJsonObj,serversLoad,serversAddr);
 							log.info("updated serverLoad list!");
-							return false;
-						} catch(Exception e) {
-							log.debug("something wrong with updating");
+							} catch(Exception e) {
+									log.debug("something wrong with updating");
+									returnJsonObj.put("command", "INVALID_MESSAGE");
+									returnJsonObj.put("info", "invaild announce parameter(s)!");
+									con.closeCon();
+									return true;
+								}
+					} //after getting announce, what should do next is send the Announce out to other connected servers.
+					else {
+						try {
+						    log.info("Sending announce to connected "+server.getSocket().getPort());
+							server.writeMsg(msg);
+						} catch(Exception e){
+							log.debug("something wrong with server getSocket");
 							returnJsonObj.put("command", "INVALID_MESSAGE");
-							returnJsonObj.put("info", "update error");
+							returnJsonObj.put("info", "invaild announce parameter(s)!");
 							con.closeCon();
 							return true;
 						}
-				}
 
-					
+					}
+				}
+				for (String serverID: serversLoad.keySet()){
+		            String key =serverID;
+		            String value = serversLoad.get(serverID).toString();  
+		            log.info(key + " " + value);  
+				} 
+				return false;
+				}	
 		
 			
 			else if(command.equals("ACTIVITY_MESSAGE")) {
@@ -145,7 +204,6 @@ public class Control extends Thread {
 				if(secret.equals(Settings.getSecret())) {
 					log.info("Successful connection!");
 					serverList.add(con);
-					
 					return false;
 				} else {
 					returnJsonObj.put("command", "AUTHENTICATION_FAIL");
@@ -175,30 +233,40 @@ public class Control extends Thread {
 			con.closeCon();
 			return true;
 		} 
-		return true;
+		return false;
 	}
 	
-//	private void updateServersLoad(JSONObject msgJsonObj, HashMap<String, Number> serversLoad2,
-//			HashMap<String, String[]> serversAddr2) {
-//		// TODO Auto-generated method stub
-//		
-//	}
-
-	private synchronized void updateServersLoad (JSONObject msgJsonObj, HashMap<String, Number> serversLoad,HashMap<String, String[]> serversAddr)  throws Exception {
+	private boolean checkRedirect() {
 		// TODO Auto-generated method stub
+		return false;
+	}
+
+	private String[] minLoad(HashMap<String,Integer> hashMap, int load) {
+		Map<String, Integer>sortHashMap = sortByValue(hashMap);
+		 Map.Entry<String,Integer> entry = sortHashMap.entrySet().iterator().next();
+		 String key = entry.getKey();
+		 int value = entry.getValue().intValue();
+//		 if()
+		return null;
+	}
+
+	// update lists related to servers.
+	private synchronized void updateServersLoad (JSONObject msgJsonObj, HashMap<String, Integer> serversLoad,HashMap<String, String[]> serversAddr)  throws Exception {
+
 		     String serverID = (String) msgJsonObj.get("id");
-		     log.info(serverID);
+//		     log.info(serverID);
 		     Number serverLoad = (Number) msgJsonObj.get("load");
-		     log.info(serverLoad);
+//		     log.info(serverLoad);
 		     String hostname = (String) msgJsonObj.get("hostname");
-		     log.info(hostname);
+//		     log.info(hostname);
 		     Number port = (Number) msgJsonObj.get("port");
-		     log.info(port);
+//		     log.info(port);
 		     log.info(serverID+" "+ serverLoad+" "+hostname+" "+port);
-		     if(serverID.equals(null)||serverLoad==null||hostname.equals(null)||port.equals(null)) {
+//		     serverID.equals(null)||serverLoad.equals(null)||hostname.equals(null)||port.equals(null)
+		     if(serverID.equals(null)||serverLoad.equals(null)||hostname.equals(null)||port.equals(null)) {
 		    	 throw new Exception();
 		     }
-		     serversLoad.put(serverID, serverLoad);
+		     serversLoad.put(serverID, new Integer(serverLoad.intValue()));
 		     serversAddr.put(serverID, new String[] {hostname,Integer.toString(port.intValue())});
 		
 	}
@@ -210,10 +278,6 @@ public class Control extends Thread {
 		}
 	}
 
-	private synchronized boolean inUserList(Object object) {
-		// TODO Auto-generated method stub
-		return false;
-	}
 
 	/*
 	 * The connection has been closed by the other party.
@@ -258,7 +322,7 @@ public class Control extends Thread {
 				server_announce.put("load", clientList.size()); 
 				server_announce.put("hostname",InetAddress.getLocalHost().toString());
 				server_announce.put("port", Settings.getLocalPort());
-				log.debug(server_announce.toJSONString());
+//				log.debug(server_announce.toJSONString());
 				for(Connection server : serverList) {
 					server.writeMsg(server_announce.toJSONString());
 				}
