@@ -78,7 +78,7 @@ public class Control extends Thread {
 	 * Return true if the connection should close.
 	 */
 	@SuppressWarnings("unchecked")
-	public synchronized boolean process(Connection con,String msg){
+	public synchronized boolean process(Connection con,String msg) {
 		//loggedUser uses as flag which indicates currently logged username 
 		String loggedUser = null;
 		JSONParser parser = new JSONParser();
@@ -87,7 +87,7 @@ public class Control extends Thread {
 			JSONObject msgJsonObj = (JSONObject) parser.parse(msg);
 			String command = (String) msgJsonObj.get("command");
 			
-			if(command.equals(null)) {
+			if(command==null) {
 				throw new Exception();
 			}
 			
@@ -141,9 +141,130 @@ public class Control extends Thread {
 
 			
 			else if(command.equals("LOGOUT")) {
-				con.closeCon();
+				con.closeCon(); 
 				clientList.remove(con);
 				return true;
+			}
+			
+			else if(command.equals("REGISTER")) {
+				String username = (String) msgJsonObj.get("username");
+			    String password = (String) msgJsonObj.get("secret");
+			    if(username==null||password==null){
+			    	throw new Exception();
+			    }
+			    
+			    if(userList.containsKey(username)) {
+			    	returnJsonObj.put("command", "REGISTER_FAILED");
+	    			returnJsonObj.put("info", username+" is already registered with the system");
+	    			con.writeMsg(returnJsonObj.toJSONString());
+	    			return true;
+			    }
+			    //use locks to record how many servers return back messages
+			    //just in case, what if one server does not return message back?! what should I do?
+			    for(Connection server: serverList) {
+			    	returnJsonObj.put("command", "LOCK_REQUEST");
+	    			returnJsonObj.put("username", username);
+	    			returnJsonObj.put("secret", password);
+	    		    server.writeMsg(returnJsonObj.toJSONString());
+			    }
+			    //after receiving all LOCK_AllOWED messages returned from all such servers.
+			    //respond with a Register Success
+			    while(true) {
+			    	if() {
+			    		break
+			    	}
+			    }
+			    returnJsonObj.put("command", "REGISTER_SUCCESS");
+    			returnJsonObj.put("info", "register success for arron"+username);
+    			con.writeMsg(returnJsonObj.toJSONString());
+			    return false;
+			}
+			
+			else if(command.equals("LOCK_ALLOWED")) {
+				checkAuthenServer(con, serverList);
+				String username = (String) msgJsonObj.get("username");
+			    String password = (String) msgJsonObj.get("secret");
+			    if(username==null||password==null){
+			    	throw new Exception();
+			    }
+			    if (userList.containsKey(username)) {
+				    for(Connection server: serverList) {
+				    	returnJsonObj.put("command", "LOCK_DENIED");
+		    			returnJsonObj.put("username", username);
+		    			returnJsonObj.put("secret", password);
+		    		    server.writeMsg(returnJsonObj.toJSONString());
+				    }
+				    return false;
+			    }
+			    else {
+			    	for(Connection server: serverList) {
+			    		if(con.equals(server)) {
+			    			continue;
+			    		}
+				    	returnJsonObj.put("command", "LOCK_ALLOWED");
+		    			returnJsonObj.put("username", username);
+		    			returnJsonObj.put("secret", password);
+		    		    server.writeMsg(returnJsonObj.toJSONString());
+				    }
+			    }
+			    
+			}
+			
+			else if(command.equals("LOCK_DENIED")) {
+				checkAuthenServer(con, serverList);
+				String username = (String) msgJsonObj.get("username");
+			    String password = (String) msgJsonObj.get("secret");
+			    if(username==null||password==null){
+			    	throw new Exception();
+			    }
+			    if (userList.containsKey(username)) {
+			    	userList.remove(username);
+			    }
+			    
+			    for(Connection server: serverList) {
+			    	if(con.equals(server)) {
+			    		continue;
+			    	}
+			    	returnJsonObj.put("command", "LOCK_DENIED");
+	    			returnJsonObj.put("username", username);
+	    			returnJsonObj.put("secret", password);
+	    		    server.writeMsg(returnJsonObj.toJSONString());
+			    }
+			    return false;
+			}
+			
+			else if(command.equals("LOCK_REQUEST")) {
+				checkAuthenServer(con, serverList);
+				String username = (String) msgJsonObj.get("username");
+			    String password = (String) msgJsonObj.get("secret");
+			    if(username==null||password==null){
+			    	throw new Exception();
+			    }
+			    if(userList.containsKey(username)) {
+			    	returnJsonObj.put("command", "LOCK_DENIED");
+	    			returnJsonObj.put("username", username);
+	    			returnJsonObj.put("secret", password);
+	    		    for(Connection server: serverList) {
+	    			server.writeMsg(returnJsonObj.toJSONString());
+			    	//server's connection still alive;
+			    	return false;
+	    		    }
+			    }
+			    else {
+			    	//if local table doesn't contain this user; add it to local table, then broadcast to servers except coming one  
+			    	userList.put(username, password);
+			    	returnJsonObj.put("command", "LOCK_REQUEST");
+	    			returnJsonObj.put("username", username);
+	    			returnJsonObj.put("secret", password);
+	    			for(Connection server: serverList) {
+	    				if(server.equals(con)) {
+	    					continue;
+	    				}
+		    			server.writeMsg(returnJsonObj.toJSONString());
+				    	//server's connection still alive;
+				    	return false;
+			    }                                                                               
+			    }
 			}
 			
 			else if(command.equals("ACTIVITY_MESSAGE")) {
@@ -192,6 +313,7 @@ public class Control extends Thread {
 			}
 			
 			else if(command.equals("SERVER_ANNOUNCE")) {
+				checkAuthenServer(con, serverList);
 				for(Connection server: serverList) {
 					//if announce was sent for yourself, update local lists.
 					if(server.equals(con)) {
@@ -273,6 +395,13 @@ public class Control extends Thread {
 		} 
 	}
 	
+	private void checkAuthenServer(Connection con, ArrayList<Connection> serverList) throws Exception {
+		// TODO Auto-generated method stub
+		if(serverList.contains(con)) {
+			throw new Exception();
+		}
+	}
+
 	private boolean authenCheck(String loggedUser, String username, String password, HashMap<String, String> userList) {
 		if(loggedUser.equals(username)&&password.equals(userList.get(username))) {
 		return true;
