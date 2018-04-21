@@ -83,6 +83,8 @@ public class Control extends Thread {
 	@SuppressWarnings("unchecked")
 	public synchronized boolean process(Connection con,String msg) {
 		//loggedUser uses as flag which indicates currently logged username 
+		//userList is
+		userList.put("anonymous", "laaaa");
 		String loggedUser = null;
 		JSONParser parser = new JSONParser();
 		JSONObject returnJsonObj = new JSONObject();
@@ -95,10 +97,11 @@ public class Control extends Thread {
 			
 			if(command.equals("LOGIN")) {
 				String username = (String) msgJsonObj.get("username");
-				String password = (String) msgJsonObj.get("secret");
+	
 				if (username==null) {
 					throw new Exception("Username cannot be null!");
 				}
+				String password = (String) msgJsonObj.get("secret");
 				if (username.equals("anonymous")) {
 					clientList.add(con);
 					loggedUser = username;
@@ -116,6 +119,7 @@ public class Control extends Thread {
 						returnJsonObj.put("command", "LOGIN_SUCCESS");
 						returnJsonObj.put("info", "logged in as "+username);
 						con.writeMsg(returnJsonObj.toJSONString());
+						
 					}
 					else {
 						returnJsonObj.put("command", "LOGIN_FAILED");
@@ -165,7 +169,16 @@ public class Control extends Thread {
 	    			return true;
 			    }
 			    //In this way, we can get which client sent this request in order to send back Req_Fail/Success.
+			    if(serverList.size()==0) {
+			    	clientList.add(con);
+			    	userList.put(username, password);
+				    returnJsonObj.put("command", "REGISTER_SUCCESS");
+	    			returnJsonObj.put("info", "register success for "+username);
+	    			con.writeMsg(returnJsonObj.toJSONString());
+			    	return false;
+			    }
 			    registerReq.put(username, con);
+			    userList.put(username, password);
 			    //broadcast lock_req to all adjacent clients.
 			    for(Connection server: serverList) {
 			    	returnJsonObj.put("command", "LOCK_REQUEST");
@@ -180,13 +193,16 @@ public class Control extends Thread {
 //				checkAuthenServer(con, serverList);
 				String username = (String) msgJsonObj.get("username");
 			    String password = (String) msgJsonObj.get("secret");
+			    log.debug(username+" "+password);
 			    if(username==null||password==null){
 			    	throw new Exception("LOCK_ALLOWED: parameters are not allowed to be null");
 			    }
+			    log.debug("received ALLOWED from "+con.getSocket().toString());
 			    
 			    allowCount++;
 			    //Except for this coming connection(server), broadcasts LOCK_ALLOWED to all adjacent servers. 
 			    for(Connection server: serverList) {
+			    	log.debug("here!!!!!!!!!!!!!!!!!");
 			    	if(server.equals(con)) {
 			    		continue;
 			    	}
@@ -199,7 +215,7 @@ public class Control extends Thread {
 		    		if(registerReq.containsKey(username)) {
 					    returnJsonObj.put("command", "REGISTER_SUCCESS");
 		    			returnJsonObj.put("info", "register success for "+username);
-		    			con.writeMsg(returnJsonObj.toJSONString());
+		    			registerReq.get(username).writeMsg(returnJsonObj.toJSONString());
 		    			//remove the key from HashMap. 
 		    			registerReq.remove(username);
 		    		}
@@ -234,11 +250,13 @@ public class Control extends Thread {
 			}
 			
 			else if(command.equals("LOCK_REQUEST")) {
+				log.debug("recevied LOCK_REQUEST From "+ con.getSocket().toString());
 //				checkAuthenServer(con, serverList);
 				String username = (String) msgJsonObj.get("username");
 			    String password = (String) msgJsonObj.get("secret");
+			    log.debug(username+" "+password);
 			    if(username==null||password==null){
-			    	throw new Exception();
+			    	throw new Exception("invaid parameters from LOCK_REQUEST");
 			    }
 //			    if(userList.containsKey(username)) {
 //			    	returnJsonObj.put("command", "LOCK_DENIED");
@@ -252,10 +270,13 @@ public class Control extends Thread {
 //			    }
 //			    else {
 			    	//if local table doesn't contain this user; add it to local table, then broadcast to servers except coming one  
-			    	userList.put(username, password);
+			    	
+			        userList.put(username, password);
+			        log.debug(username + " "+ userList.get(username));
 
 	    			for(Connection server: serverList) {
-	    				if(server.equals(con)) {
+	    				log.debug(con.toString());
+	    				if(con.equals(server)) {
 	    					continue;
 	    				}
 				    	returnJsonObj.put("command", "LOCK_REQUEST");
@@ -264,11 +285,13 @@ public class Control extends Thread {
 		    			server.writeMsg(returnJsonObj.toJSONString());	
 			    }
 	    			for(Connection server: serverList) {
+	    				JSONObject returnJsonObj2 = new JSONObject();
 	    				//put will update before command and send allowed again
-				    	returnJsonObj.put("command", "LOCK_ALLOWED");
-		    			server.writeMsg(returnJsonObj.toJSONString());	
+				    	returnJsonObj2.put("command", "LOCK_ALLOWED");
+		    			returnJsonObj2.put("username", username);
+		    			returnJsonObj2.put("secret", password);
+		    			server.writeMsg(returnJsonObj2.toJSONString());	
 	    			}
-		    
 	    			return false;
 			}
 			
@@ -345,7 +368,7 @@ public class Control extends Thread {
 				for(Connection server: serverList) {
 					//if announce was sent for yourself, update local lists.
 					if(server.equals(con)) {
-						log.info("Hey, it's me!! Try other conncetion!");
+//						log.info("Hey, it's me!! Try other conncetion!");
 						try{
 							updateServersLoad(msgJsonObj,serversLoad,serversAddr);
 							log.info("updated serverLoad list!");
@@ -371,11 +394,11 @@ public class Control extends Thread {
 
 					}
 				}
-				for (String serverID: serversLoad.keySet()){
-		            String key =serverID;
-		            String value = serversLoad.get(serverID).toString();  
-		            log.info(key + " " + value);  
-				} 
+//				for (String serverID: serversLoad.keySet()){
+//		            String key =serverID;
+//		            String value = serversLoad.get(serverID).toString();  
+//     	            log.info(key + " " + value);  
+//				} 
 				return false;
 				}	
 		
@@ -423,12 +446,12 @@ public class Control extends Thread {
 		}
 	}
 	
-	private void checkAuthenServer(Connection con, ArrayList<Connection> serverList) throws Exception {
-		// TODO Auto-generated method stub
-		if(serverList.contains(con)) {
-			throw new Exception();
-		}
-	}
+//	private void checkAuthenServer(Connection con, ArrayList<Connection> serverList) throws Exception {
+//		// TODO Auto-generated method stub
+//		if(serverList.contains(con)) {
+//			throw new Exception("This is an invaild server. Authentication first");
+//		}
+//	}
 
 	private boolean authenCheck(String loggedUser, String username, String password, HashMap<String, String> userList) {
 		if(loggedUser.equals(username)&&password.equals(userList.get(username))) {
@@ -458,14 +481,14 @@ public class Control extends Thread {
 	private synchronized void updateServersLoad (JSONObject msgJsonObj, HashMap<String, Integer> serversLoad,HashMap<String, String[]> serversAddr)  throws Exception {
 
 		     String serverID = (String) msgJsonObj.get("id");
-		     log.info(serverID);
+//		     log.info(serverID);
 		     Number serverLoad = (Number) msgJsonObj.get("load");
-		     log.info(serverLoad);
+//		     log.info(serverLoad);
 		     String hostname = (String) msgJsonObj.get("hostname");
-		     log.info(hostname);
+//		     log.info(hostname);
 		     Number port = (Number) msgJsonObj.get("port");
-		     log.info(port);
-		     log.info(serverID+" "+ serverLoad+" "+hostname+" "+port);
+//		     log.info(port);
+//		     log.info(serverID+" "+ serverLoad+" "+hostname+" "+port);
 //		     serverID.equals(null)||serverLoad.equals(null)||hostname.equals(null)||port.equals(null)
 		     if(serverID==null||serverLoad==null||hostname==null||port==null) {
 		    	 throw new Exception("Update issue of parameters null.");
@@ -532,7 +555,7 @@ public class Control extends Thread {
 			}
 			//all above things are for servers; the following one is to handle activity from 
 			if(!term){
-				log.debug("doing activity");
+//				log.debug("doing activity");
 				term=doActivity();
 			}
 			

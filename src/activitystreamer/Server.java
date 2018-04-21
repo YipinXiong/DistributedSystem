@@ -101,7 +101,7 @@ public class Server {
 		
 		final Control c = Control.getInstance(); 
 		c.initiateConnection();
-		c.run();
+		c.start();
 		// the following shutdown hook doesn't really work, it doesn't give us enough time to
 		// cleanup all of our connections before the jvm is terminated.
 		Runtime.getRuntime().addShutdownHook(new Thread() {
