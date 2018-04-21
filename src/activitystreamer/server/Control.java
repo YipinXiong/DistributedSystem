@@ -89,7 +89,6 @@ public class Control extends Thread {
 		try {
 			JSONObject msgJsonObj = (JSONObject) parser.parse(msg);
 			String command = (String) msgJsonObj.get("command");
-			
 			if(command==null) {
 				throw new Exception();
 			}
@@ -343,7 +342,6 @@ public class Control extends Thread {
 			}
 			
 			else if(command.equals("SERVER_ANNOUNCE")) {
-				checkAuthenServer(con, serverList);
 				for(Connection server: serverList) {
 					//if announce was sent for yourself, update local lists.
 					if(server.equals(con)) {
@@ -460,13 +458,13 @@ public class Control extends Thread {
 	private synchronized void updateServersLoad (JSONObject msgJsonObj, HashMap<String, Integer> serversLoad,HashMap<String, String[]> serversAddr)  throws Exception {
 
 		     String serverID = (String) msgJsonObj.get("id");
-//		     log.info(serverID);
+		     log.info(serverID);
 		     Number serverLoad = (Number) msgJsonObj.get("load");
-//		     log.info(serverLoad);
+		     log.info(serverLoad);
 		     String hostname = (String) msgJsonObj.get("hostname");
-//		     log.info(hostname);
+		     log.info(hostname);
 		     Number port = (Number) msgJsonObj.get("port");
-//		     log.info(port);
+		     log.info(port);
 		     log.info(serverID+" "+ serverLoad+" "+hostname+" "+port);
 //		     serverID.equals(null)||serverLoad.equals(null)||hostname.equals(null)||port.equals(null)
 		     if(serverID==null||serverLoad==null||hostname==null||port==null) {
