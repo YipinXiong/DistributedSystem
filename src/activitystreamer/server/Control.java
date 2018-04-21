@@ -177,7 +177,7 @@ public class Control extends Thread {
 			}
 			
 			else if(command.equals("LOCK_ALLOWED")) {
-				checkAuthenServer(con, serverList);
+//				checkAuthenServer(con, serverList);
 				String username = (String) msgJsonObj.get("username");
 			    String password = (String) msgJsonObj.get("secret");
 			    if(username==null||password==null){
@@ -211,7 +211,7 @@ public class Control extends Thread {
 			}
 			
 			else if(command.equals("LOCK_DENIED")) {
-				checkAuthenServer(con, serverList);
+//				checkAuthenServer(con, serverList);
 				String username = (String) msgJsonObj.get("username");
 			    String password = (String) msgJsonObj.get("secret");
 			    if(username==null||password==null){
@@ -234,7 +234,7 @@ public class Control extends Thread {
 			}
 			
 			else if(command.equals("LOCK_REQUEST")) {
-				checkAuthenServer(con, serverList);
+//				checkAuthenServer(con, serverList);
 				String username = (String) msgJsonObj.get("username");
 			    String password = (String) msgJsonObj.get("secret");
 			    if(username==null||password==null){
@@ -320,7 +320,7 @@ public class Control extends Thread {
 			    }
 			}
 			else if(command.equals("ACTIVITY_BROADCAST")) {
-				checkAuthenServer(con, serverList);
+//				checkAuthenServer(con, serverList);
 				JSONObject activity = (JSONObject) msgJsonObj.get("activity");
 				if(msgJsonObj.get("activity")==null) {
 					throw new Exception("broadactivity is incompleted");
