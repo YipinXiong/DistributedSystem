@@ -97,307 +97,57 @@ public class Control extends Thread {
 				return login(con,msgJsonObj,returnJsonObj);
 			}
 			
-            case ("LOGOUT"):{
-                log.info("wtf");
+            case ("LOGOUT"): {
                 return logout(con);
             }
 			
-			}
+            case("REGISTER"): {
+            	return register(con,msgJsonObj,returnJsonObj);
+            }
+            
+            case("LOCK_ALLOWED"): {
+            	return lockAllowed(con,msgJsonObj,returnJsonObj);
+            }
+            
+            case("LOCK_DENIED"): {
+            	return lockDenied(con,msgJsonObj,returnJsonObj);
+            }
+            
+            case("LOCK_REQUEST"): {
+            	return lockRequest(con,msgJsonObj,returnJsonObj);
+            }
+            
+            case("ACTIVITY_MESSAGE"): {
+            	return activityMessage(con,msgJsonObj,returnJsonObj);
+            }
+            
+            case("ACTIVITY_BROADCAST"): {
+            	return activityBroadcast(con,msgJsonObj,returnJsonObj);
+            }
+            
+            case("SERVER_ANNOUNCE"): {
+            	return serverAnnounce(con,msgJsonObj,returnJsonObj, msg);
+            }
+            
+            case("INVALID_MESSAGE"): {
+            	return invalidMessage(con,msgJsonObj);
+            }
+            
+            case("AUTHENTICATE"): {
+            	return authenticate(con,msgJsonObj,returnJsonObj);
+            }
+            
+            case("AUTHENTICATION_FAIL"): {
+            	return authenticateFail(con,msgJsonObj,returnJsonObj);
+            	
+            }
+            
+            default: {
+            	throw new Exception("the received message did not contain a vaild command");
+            }
+            
+            }
 			
-
-			
-			else if(command.equals("LOGOUT")) {
-
-			}
-			
-			else if(command.equals("REGISTER")) {
-				String username = (String) msgJsonObj.get("username");
-			    String password = (String) msgJsonObj.get("secret");
-			    if(username==null||password==null){
-			    	throw new Exception("Register username or secret is null!!");
-			    }
-			    
-			    if(registeredList.containsKey(username)) {
-			    	returnJsonObj.put("command", "REGISTER_FAILED");
-	    			returnJsonObj.put("info", username+" is already registered with the system");
-	    			con.writeMsg(returnJsonObj.toJSONString());
-	    			clientList.remove(con);
-	    			con.closeCon();
-	    			return true;
-			    }
-			    //In this way, we can get which client sent this request in order to send back Req_Fail/Success.
-			    if(serverList.size()==0) {
-			    	clientList.add(con);
-			    	registeredList.put(username, password);
-				    returnJsonObj.put("command", "REGISTER_SUCCESS");
-	    			returnJsonObj.put("info", "register success for "+username);
-	    			con.writeMsg(returnJsonObj.toJSONString());
-			    	return false;
-			    }
-			    registerReq.put(username, con);
-			    registeredList.put(username, password);
-			    //broadcast lock_req to all adjacent clients.
-			    for(Connection server: serverList) {
-			    	returnJsonObj.put("command", "LOCK_REQUEST");
-	    			returnJsonObj.put("username", username);
-	    			returnJsonObj.put("secret", password);
-	    		    server.writeMsg(returnJsonObj.toJSONString());
-			    }
-			    return false;
-			}
-			
-			else if(command.equals("LOCK_ALLOWED")) {
-				checkAuthenServer(con, serverList);
-				String username = (String) msgJsonObj.get("username");
-			    String password = (String) msgJsonObj.get("secret");
-//			    log.debug(username+" "+password);
-			    if(username==null||password==null){
-			    	throw new Exception("LOCK_ALLOWED: parameters are not allowed to be null");
-			    }
-//			    log.debug("received ALLOWED from "+con.getSocket().toString());
-			    
-			    allowCount++;
-			    //Except for this coming connection(server), broadcasts LOCK_ALLOWED to all adjacent servers. 
-			    for(Connection server: serverList) {
-//			    	log.debug("here!!!!!!!!!!!!!!!!!");
-			    	if(server.equals(con)) {
-			    		continue;
-			    	}
-			    	returnJsonObj.put("command", "LOCK_ALLOWED");
-	    			returnJsonObj.put("username", username);
-	    			returnJsonObj.put("secret", password);
-	    		    server.writeMsg(returnJsonObj.toJSONString());
-			    }
-		    	if(allowCount==serverList.size()) {
-		    		if(registerReq.containsKey(username)) {
-					    returnJsonObj.put("command", "REGISTER_SUCCESS");
-		    			returnJsonObj.put("info", "register success for "+username);
-		    			registerReq.get(username).writeMsg(returnJsonObj.toJSONString());
-		    			//remove the key from HashMap. 
-		    			registerReq.remove(username);
-		    		}
-		    		//No matter what is original request_lock sender; You should resume allowed counter.
-	    			allowCount=0;	
-		    }
-
-			    return false;
-			}
-			
-			else if(command.equals("LOCK_DENIED")) {
-				checkAuthenServer(con, serverList);
-				String username = (String) msgJsonObj.get("username");
-			    String password = (String) msgJsonObj.get("secret");
-			    if(username==null||password==null){
-			    	throw new Exception();
-			    }
-			    if (registeredList.containsKey(username)) {
-			    	registeredList.remove(username);
-			    }
-			    if(registerReq.containsKey(username)) {
-			    	Connection registerClient = registerReq.get(username);
-			    	returnJsonObj.put("command", "REGISTER_FAILED");
-	    			returnJsonObj.put("info", username+" is already registered with the system.");
-	    			registerReq.get(username).writeMsg(returnJsonObj.toJSONString());
-	    			//remove the key from HashMap. 
-	    			registerReq.get(username).closeCon();
-	    			if(con.isAlive()) {
-	    				con.closeCon();
-	    			}
-	    			registerReq.remove(username);
-			    	registerClient.writeMsg(msg);
-			    	return true;
-			    }
-			    for(Connection server: serverList) {
-			    	if(con.equals(server)) {
-			    		continue;
-			    	}
-			    	returnJsonObj.put("command", "LOCK_DENIED");
-	    			returnJsonObj.put("username", username);
-	    			returnJsonObj.put("secret", password);
-	    		    server.writeMsg(returnJsonObj.toJSONString());
-			    }
-			    return false;
-			}
-			
-			else if(command.equals("LOCK_REQUEST")) {
-				log.debug("recevied LOCK_REQUEST From "+ con.getSocket().toString());
-				checkAuthenServer(con, serverList);
-				String username = (String) msgJsonObj.get("username");
-			    String password = (String) msgJsonObj.get("secret");
-//			    log.debug(username+" "+password);
-			    if(username==null||password==null){
-			    	throw new Exception("invaid parameters from LOCK_REQUEST");
-			    }
-			    if(registeredList.containsKey(username)) {
-			    	returnJsonObj.put("command", "LOCK_DENIED");
-	    			returnJsonObj.put("username", username);
-	    			returnJsonObj.put("secret", password);
-	    		    con.writeMsg(returnJsonObj.toJSONString());
-
-			    	return false;
-			    }
-
-			    	//if local table doesn't contain this user; add it to local table, then broadcast to servers except coming one  
-			    	
-			        registeredList.put(username, password);
-//			        log.debug(username + " "+ registeredList.get(username));
-
-	    			for(Connection server: serverList) {
-	    				if(con.equals(server)) {
-	    					continue;
-	    				}
-				    	returnJsonObj.put("command", "LOCK_REQUEST");
-		    			returnJsonObj.put("username", username);
-		    			returnJsonObj.put("secret", password);
-		    			server.writeMsg(returnJsonObj.toJSONString());	
-			    }
-	    			for(Connection server: serverList) {
-	    				JSONObject returnJsonObj2 = new JSONObject();
-	    				//put will update before command and send allowed again
-				    	returnJsonObj2.put("command", "LOCK_ALLOWED");
-		    			returnJsonObj2.put("username", username);
-		    			returnJsonObj2.put("secret", password);
-		    			server.writeMsg(returnJsonObj2.toJSONString());	
-	    			}
-	    			return false;
-			}
-			
-			else if(command.equals("ACTIVITY_MESSAGE")) {
-				if(!clientList.contains(con)) {
-					throw new Exception("You should Login in first");
-				}
-				String username = (String) msgJsonObj.get("username");
-				String password = (String) msgJsonObj.get("secret");
-//			    JSONObject activity = (JSONObject) msgJsonObj.get("activity");
-				String activity = (String) msgJsonObj.get("activity");
-				if(!username.equals("anonymous")) {
-
-				    log.debug(username,password,activity);
-				    if(username==null||password==null||activity==null){
-				    	throw new Exception("ACTIVITY_MESSAGE: the json object is not completed.");
-				    }
-				}
-				
-			    log.debug(username+" "+password);
-			    if(checkLoginState(loggedUser, username, password, registeredList, con)) {
-	    			log.info("pass the authentication!");
-			    	for(Connection client: clientList) {
-			    		if(client.equals(con)) {
-			    			continue;
-			    		}
-			    		else {
-			    			returnJsonObj.put("command", "ACTIVITY_BROADCAST");
-			    			returnJsonObj.put("activity", activity);
-			    		    client.writeMsg(returnJsonObj.toJSONString());
-			    		}
-			    	}
-			    	for(Connection server: serverList) {
-			    			returnJsonObj.put("command", "ACTIVITY_BROADCAST");
-			    			returnJsonObj.put("activity", activity);
-			    		    server.writeMsg(returnJsonObj.toJSONString());
-			    	}
-			    	return false;
-			    }
-			    else {
-			    	//AUTHENTICATION_FAIL
-					returnJsonObj.put("command", "AUTHENTICATION_FAIL");
-					returnJsonObj.put("info", "the supplied user or secret is incorrect");
-					con.writeMsg(returnJsonObj.toJSONString());
-					log.debug("connection Fails for aunthentication_fail");
-					clientList.remove(con);
-					con.closeCon();
-					return true;
-			    }
-			}
-			
-			else if(command.equals("ACTIVITY_BROADCAST")) {
-				checkAuthenServer(con, serverList);
-//				JSONObject activity = (JSONObject) msgJsonObj.get("activity");
-				String activity = (String) msgJsonObj.get("activity");
-				if(msgJsonObj.get("activity")==null) {
-					throw new Exception("broadactivity is incompleted");
-				}
-				for(Connection client: clientList) {
-					returnJsonObj.put("command", "ACTIVITY_BROADCAST");
-					returnJsonObj.put("activity", activity);
-					client.writeMsg(returnJsonObj.toJSONString());
-				}
-				for(Connection server: serverList) {
-					if(server.equals(con)) {
-						continue;
-					}
-					returnJsonObj.put("command", "ACTIVITY_BROADCAST");
-					returnJsonObj.put("activity", activity);
-					server.writeMsg(returnJsonObj.toJSONString());
-				}
-				return false;
-			}
-			
-			else if(command.equals("SERVER_ANNOUNCE")) {
-				for(Connection server: serverList) {
-					if(server.equals(con)) {
-						try{
-							updateServersLoad(msgJsonObj,serversLoad,serversAddr);
-							} catch(Exception e) {
-									log.debug("something wrong with updating");
-									returnJsonObj.put("command", "INVALID_MESSAGE");
-									returnJsonObj.put("info", "invaild announce parameter(s)!");
-									con.closeCon();
-									return true;
-								}
-					} //after getting announce, what should do next is send the Announce out to other connected servers.
-					else {
-						try {
-							server.writeMsg(msg);
-						} catch(Exception e){
-							log.debug("something wrong with server getSocket");
-							returnJsonObj.put("command", "INVALID_MESSAGE");
-							returnJsonObj.put("info", "invaild announce parameter(s)!");
-							con.closeCon();
-							return true;
-						}
-
-					}
-				}
-				return false;
-				}	
-		
-			
-			else if(command.equals("INVALID_MESSAGE")) {
-				String errInfo = (String) msgJsonObj.get("info");
-				log.error(errInfo);
-				con.closeCon();
-				return true;
-			}
-			
-			else if(command.equals("AUTHENTICATE")) {
-				String secret = (String) msgJsonObj.get("secret");
-				if(secret.equals(Settings.getSecret())) {
-					log.info("Successful connection!");
-					serverList.add(con);
-					return false;
-				} else {
-					returnJsonObj.put("command", "AUTHENTICATION_FAIL");
-					returnJsonObj.put("info", "the supplied secret is incorrect:"+ secret);
-					con.writeMsg(returnJsonObj.toJSONString());
-					log.debug("connection Fails");
-					con.closeCon();
-					return true;
-				}
-			}
-			
-			else if(command.equals("AUTHENTICATION_FAIL")) {
-				String errInfo = (String) msgJsonObj.get("info");
-				log.debug(errInfo);
-				con.closeCon();
-				return true;
-			}
-			else {
-				returnJsonObj.put("command", "INVALID_MESSAGE");
-				returnJsonObj.put("info", "the received message did not contain a vaild command");
-				con.closeCon();
-				return true;
-			}
 		} catch (Exception e) {
 			returnJsonObj.put("command", "INVALID_MESSAGE");
 			returnJsonObj.put("info",e.getMessage());
@@ -406,6 +156,294 @@ public class Control extends Thread {
 		}
 	}
 	
+	private boolean authenticateFail(Connection con, JSONObject msgJsonObj, JSONObject returnJsonObj) {
+		String errInfo = (String) msgJsonObj.get("info");
+		log.debug(errInfo);
+		con.closeCon();
+		return true;
+	}
+
+	@SuppressWarnings("unchecked")
+	private boolean authenticate(Connection con, JSONObject msgJsonObj, JSONObject returnJsonObj) {
+		String secret = (String) msgJsonObj.get("secret");
+		if(secret.equals(Settings.getSecret())) {
+			log.info("Successful connection!");
+			serverList.add(con);
+			return false;
+		} else {
+			returnJsonObj.put("command", "AUTHENTICATION_FAIL");
+			returnJsonObj.put("info", "the supplied secret is incorrect:"+ secret);
+			con.writeMsg(returnJsonObj.toJSONString());
+			log.debug("connection Fails");
+			con.closeCon();
+			return true;
+		}
+	}
+
+	private boolean invalidMessage(Connection con, JSONObject msgJsonObj) {
+		String errInfo = (String) msgJsonObj.get("info");
+		log.error(errInfo);
+		con.closeCon();
+		return true;
+	}
+
+	@SuppressWarnings("unchecked")
+	private boolean serverAnnounce(Connection con, JSONObject msgJsonObj, JSONObject returnJsonObj, String msg) {
+		for(Connection server: serverList) {
+			if(server.equals(con)) {
+				try{
+					updateServersLoad(msgJsonObj,serversLoad,serversAddr);
+					} catch(Exception e) {
+							log.debug("something wrong with updating");
+							returnJsonObj.put("command", "INVALID_MESSAGE");
+							returnJsonObj.put("info", "invaild announce parameter(s)!");
+							con.closeCon();
+							return true;
+						}
+			} //after getting announce, what should do next is send the Announce out to other connected servers.
+			else {
+				try {
+					server.writeMsg(msg);
+				} catch(Exception e){
+					log.debug("something wrong with server getSocket");
+					returnJsonObj.put("command", "INVALID_MESSAGE");
+					returnJsonObj.put("info", "invaild announce parameter(s)!");
+					con.closeCon();
+					return true;
+				}
+
+			}
+		}
+		return false;
+	}
+
+	@SuppressWarnings("unchecked")
+	private boolean activityBroadcast(Connection con, JSONObject msgJsonObj, JSONObject returnJsonObj) throws Exception {
+		checkAuthenServer(con, serverList);
+//		JSONObject activity = (JSONObject) msgJsonObj.get("activity");
+		String activity = (String) msgJsonObj.get("activity");
+		if(msgJsonObj.get("activity")==null) {
+			throw new Exception("broadactivity is incompleted");
+		}
+		for(Connection client: clientList) {
+			returnJsonObj.put("command", "ACTIVITY_BROADCAST");
+			returnJsonObj.put("activity", activity);
+			client.writeMsg(returnJsonObj.toJSONString());
+		}
+		for(Connection server: serverList) {
+			if(server.equals(con)) {
+				continue;
+			}
+			returnJsonObj.put("command", "ACTIVITY_BROADCAST");
+			returnJsonObj.put("activity", activity);
+			server.writeMsg(returnJsonObj.toJSONString());
+		}
+		return false;
+	}
+
+	@SuppressWarnings("unchecked")
+	private boolean activityMessage(Connection con, JSONObject msgJsonObj, JSONObject returnJsonObj) throws Exception {
+		if(!clientList.contains(con)) {
+			throw new Exception("You should Login in first");
+		}
+		String username = (String) msgJsonObj.get("username");
+		String password = (String) msgJsonObj.get("secret");
+//	    JSONObject activity = (JSONObject) msgJsonObj.get("activity");
+		String activity = (String) msgJsonObj.get("activity");
+		if(!username.equals("anonymous")) {
+
+		    log.debug(username,password,activity);
+		    if(username==null||password==null||activity==null){
+		    	throw new Exception("ACTIVITY_MESSAGE: the json object is not completed.");
+		    }
+		}
+		
+	    log.debug(username+" "+password);
+	    if(checkLoginState(loggedUser, username, password, registeredList, con)) {
+			log.info("pass the authentication!");
+	    	for(Connection client: clientList) {
+	    		if(client.equals(con)) {
+	    			continue;
+	    		}
+	    		else {
+	    			returnJsonObj.put("command", "ACTIVITY_BROADCAST");
+	    			returnJsonObj.put("activity", activity);
+	    		    client.writeMsg(returnJsonObj.toJSONString());
+	    		}
+	    	}
+	    	for(Connection server: serverList) {
+	    			returnJsonObj.put("command", "ACTIVITY_BROADCAST");
+	    			returnJsonObj.put("activity", activity);
+	    		    server.writeMsg(returnJsonObj.toJSONString());
+	    	}
+	    	return false;
+	    }
+	    else {
+	    	//AUTHENTICATION_FAIL
+			returnJsonObj.put("command", "AUTHENTICATION_FAIL");
+			returnJsonObj.put("info", "the supplied user or secret is incorrect");
+			con.writeMsg(returnJsonObj.toJSONString());
+			log.debug("connection Fails for aunthentication_fail");
+			clientList.remove(con);
+			con.closeCon();
+			return true;
+	    }
+	}
+
+	@SuppressWarnings("unchecked")
+	private boolean lockRequest(Connection con, JSONObject msgJsonObj, JSONObject returnJsonObj) throws Exception {
+		log.debug("recevied LOCK_REQUEST From "+ con.getSocket().toString());
+		checkAuthenServer(con, serverList);
+		String username = (String) msgJsonObj.get("username");
+	    String password = (String) msgJsonObj.get("secret");
+//	    log.debug(username+" "+password);
+	    if(username==null||password==null){
+	    	throw new Exception("invaid parameters from LOCK_REQUEST");
+	    }
+	    if(registeredList.containsKey(username)) {
+	    	returnJsonObj.put("command", "LOCK_DENIED");
+			returnJsonObj.put("username", username);
+			returnJsonObj.put("secret", password);
+		    con.writeMsg(returnJsonObj.toJSONString());
+
+	    	return false;
+	    }
+
+	    	//if local table doesn't contain this user; add it to local table, then broadcast to servers except coming one  
+	    	
+	        registeredList.put(username, password);
+//	        log.debug(username + " "+ registeredList.get(username));
+
+			for(Connection server: serverList) {
+				if(con.equals(server)) {
+					continue;
+				}
+		    	returnJsonObj.put("command", "LOCK_REQUEST");
+    			returnJsonObj.put("username", username);
+    			returnJsonObj.put("secret", password);
+    			server.writeMsg(returnJsonObj.toJSONString());	
+	    }
+			for(Connection server: serverList) {
+				JSONObject returnJsonObj2 = new JSONObject();
+				//put will update before command and send allowed again
+		    	returnJsonObj2.put("command", "LOCK_ALLOWED");
+    			returnJsonObj2.put("username", username);
+    			returnJsonObj2.put("secret", password);
+    			server.writeMsg(returnJsonObj2.toJSONString());	
+			}
+			return false;
+	}
+
+	@SuppressWarnings("unchecked")
+	private boolean lockDenied(Connection con, JSONObject msgJsonObj, JSONObject returnJsonObj) throws Exception {
+		checkAuthenServer(con, serverList);
+		String username = (String) msgJsonObj.get("username");
+	    String password = (String) msgJsonObj.get("secret");
+	    if(username==null||password==null){
+	    	throw new Exception();
+	    }
+	    
+	    if (registeredList.containsKey(username)) {
+	    	registeredList.remove(username);
+	    }
+	    
+	    if(registerReq.containsKey(username)) {
+	    	Connection registerClient = registerReq.get(username);
+	    	returnJsonObj.put("command", "REGISTER_FAILED");
+			returnJsonObj.put("info", username+" is already registered with the system.");
+			registerClient.writeMsg(returnJsonObj.toJSONString());
+			//remove the key from HashMap. 
+			con.closeCon();
+			registerReq.remove(username);
+	    	return true;
+	    }
+	    
+	    for(Connection server: serverList) {
+	    	if(con.equals(server)) {
+	    		continue;
+	    	}
+	    	returnJsonObj.put("command", "LOCK_DENIED");
+			returnJsonObj.put("username", username);
+			returnJsonObj.put("secret", password);
+		    server.writeMsg(returnJsonObj.toJSONString());
+	    }
+	    return false;
+	}
+
+	@SuppressWarnings("unchecked")
+	private boolean lockAllowed(Connection con, JSONObject msgJsonObj, JSONObject returnJsonObj) throws Exception {
+		checkAuthenServer(con, serverList);
+		String username = (String) msgJsonObj.get("username");
+	    String password = (String) msgJsonObj.get("secret");
+	    if(username==null||password==null){
+	    	throw new Exception("LOCK_ALLOWED: parameters are not allowed to be null");
+	    }
+//	    log.debug("received ALLOWED from "+con.getSocket().toString());
+	    
+	    allowCount++;
+	    //Except for this coming connection(server), broadcasts LOCK_ALLOWED to all adjacent servers. 
+	    for(Connection server: serverList) {
+//	    	log.debug("here!!!!!!!!!!!!!!!!!");
+	    	if(server.equals(con)) {
+	    		continue;
+	    	}
+	    	returnJsonObj.put("command", "LOCK_ALLOWED");
+			returnJsonObj.put("username", username);
+			returnJsonObj.put("secret", password);
+		    server.writeMsg(returnJsonObj.toJSONString());
+	    }
+    	if(allowCount==serverList.size()) {
+    		if(registerReq.containsKey(username)) {
+			    returnJsonObj.put("command", "REGISTER_SUCCESS");
+    			returnJsonObj.put("info", "register success for "+username);
+    			registerReq.get(username).writeMsg(returnJsonObj.toJSONString());
+    			//remove the key from HashMap. 
+    			registerReq.remove(username);
+    		}
+    		//No matter what is original request_lock sender; You should resume allowed counter.
+			allowCount=0;	
+    }
+
+	    return false;
+	}
+
+	@SuppressWarnings("unchecked")
+	private boolean register(Connection con, JSONObject msgJsonObj, JSONObject returnJsonObj) throws Exception {
+		String username = (String) msgJsonObj.get("username");
+	    String password = (String) msgJsonObj.get("secret");
+	    if(username==null||password==null){
+	    	throw new Exception("Register username or secret is null!!");
+	    }
+	    
+	    if(registeredList.containsKey(username)) {
+	    	returnJsonObj.put("command", "REGISTER_FAILED");
+			returnJsonObj.put("info", username+" is already registered with the system");
+			con.writeMsg(returnJsonObj.toJSONString());
+			clientList.remove(con);
+			con.closeCon();
+			return true;
+	    }
+	    //In this way, we can get which client sent this request in order to send back Req_Fail/Success.
+	    if(serverList.size()==0) {
+	    	clientList.add(con);
+	    	registeredList.put(username, password);
+		    returnJsonObj.put("command", "REGISTER_SUCCESS");
+			returnJsonObj.put("info", "register success for "+username);
+			con.writeMsg(returnJsonObj.toJSONString());
+	    	return false;
+	    }
+	    registerReq.put(username, con);
+	    registeredList.put(username, password);
+	    //broadcast lock_req to all adjacent clients.
+	    for(Connection server: serverList) {
+	    	returnJsonObj.put("command", "LOCK_REQUEST");
+			returnJsonObj.put("username", username);
+			returnJsonObj.put("secret", password);
+		    server.writeMsg(returnJsonObj.toJSONString());
+	    }
+	    return false;
+	}
+
 	private boolean logout(Connection con) {
 		clientList.remove(con);
 		con.closeCon(); 
