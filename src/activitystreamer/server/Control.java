@@ -119,7 +119,7 @@ public class Control extends Thread {
 						returnJsonObj.put("command", "LOGIN_SUCCESS");
 						returnJsonObj.put("info", "logged in as "+username);
 						con.writeMsg(returnJsonObj.toJSONString());
-						
+						return false;
 					}
 					else {
 						returnJsonObj.put("command", "LOGIN_FAILED");
@@ -193,16 +193,16 @@ public class Control extends Thread {
 //				checkAuthenServer(con, serverList);
 				String username = (String) msgJsonObj.get("username");
 			    String password = (String) msgJsonObj.get("secret");
-			    log.debug(username+" "+password);
+//			    log.debug(username+" "+password);
 			    if(username==null||password==null){
 			    	throw new Exception("LOCK_ALLOWED: parameters are not allowed to be null");
 			    }
-			    log.debug("received ALLOWED from "+con.getSocket().toString());
+//			    log.debug("received ALLOWED from "+con.getSocket().toString());
 			    
 			    allowCount++;
 			    //Except for this coming connection(server), broadcasts LOCK_ALLOWED to all adjacent servers. 
 			    for(Connection server: serverList) {
-			    	log.debug("here!!!!!!!!!!!!!!!!!");
+//			    	log.debug("here!!!!!!!!!!!!!!!!!");
 			    	if(server.equals(con)) {
 			    		continue;
 			    	}
@@ -254,7 +254,7 @@ public class Control extends Thread {
 //				checkAuthenServer(con, serverList);
 				String username = (String) msgJsonObj.get("username");
 			    String password = (String) msgJsonObj.get("secret");
-			    log.debug(username+" "+password);
+//			    log.debug(username+" "+password);
 			    if(username==null||password==null){
 			    	throw new Exception("invaid parameters from LOCK_REQUEST");
 			    }
@@ -272,10 +272,10 @@ public class Control extends Thread {
 			    	//if local table doesn't contain this user; add it to local table, then broadcast to servers except coming one  
 			    	
 			        userList.put(username, password);
-			        log.debug(username + " "+ userList.get(username));
+//			        log.debug(username + " "+ userList.get(username));
 
 	    			for(Connection server: serverList) {
-	    				log.debug(con.toString());
+//	    				log.debug(con.toString());
 	    				if(con.equals(server)) {
 	    					continue;
 	    				}

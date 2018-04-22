@@ -3,14 +3,11 @@ package activitystreamer.client;
 import java.io.BufferedReader;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
-import java.util.Scanner;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -18,20 +15,13 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
-import com.google.gson.JsonParser;
-
-import activitystreamer.Client;
-import activitystreamer.server.Control;
 import activitystreamer.util.Settings;
 
 public class ClientSkeleton extends Thread {
 	private static final Logger log = LogManager.getLogger();
 	private static ClientSkeleton clientSolution;
 	private TextFrame textFrame;
-	
-	private int portnum;
-	private boolean term = false;
-	private ServerSocket serverSocket = null;
+
 	
 
 	
@@ -55,20 +45,20 @@ public class ClientSkeleton extends Thread {
     JSONParser parser;
 	public ClientSkeleton(){
 		try {
-			//s = new Socket(Settings.getRemoteHostname(), Settings.getRemotePort());
-			   //¿Í»§¶ËÇëÇóÓëremote¶Ë¿Ú½¨Á¢TCPÁ¬½Ó
-			s = new Socket(Settings.getLocalHostname(), Settings.getLocalPort());
+			s = new Socket(Settings.getRemoteHostname(), Settings.getRemotePort());
+			   //å®¢æˆ·ç«¯è¯·æ±‚ä¸remoteç«¯å£å»ºç«‹TCPè¿æ¥
+			//s = new Socket(Settings.getLocalHostname(), Settings.getLocalPort());
 			log.info("Connection established");
 //			in = new DataInputStream( s.getInputStream());
 //			out =new DataOutputStream( s.getOutputStream());
 //			inread = new BufferedReader(new InputStreamReader(in));
 //			outwriter = new PrintWriter(out,true);
 			in = new BufferedReader(new InputStreamReader(s.getInputStream()));
-			   //»ñÈ¡SocketµÄÊäÈëÁ÷£¬ÓÃÀ´½ÓÊÕ´Ó·şÎñ¶Ë·¢ËÍ¹ıÀ´µÄÊı¾İ
+			   //è·å–Socketçš„è¾“å…¥æµï¼Œç”¨æ¥æ¥æ”¶ä»æœåŠ¡ç«¯å‘é€è¿‡æ¥çš„æ•°æ®
 			out = new PrintWriter( s.getOutputStream());
-			   //»ñÈ¡SocketµÄÊä³öÁ÷£¬ÓÃÀ´·¢ËÍÊı¾İµ½·şÎñ¶Ë
+			   //è·å–Socketçš„è¾“å‡ºæµï¼Œç”¨æ¥å‘é€æ•°æ®åˆ°æœåŠ¡ç«¯
 			//wt = new BufferedReader(new InputStreamReader(System.in));
-			  //´Ó¼üÅÌÊäÈëµÄÊı¾İÁ÷
+			  //ä»é”®ç›˜è¾“å…¥çš„æ•°æ®æµ
 			
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -80,7 +70,7 @@ public class ClientSkeleton extends Thread {
 		
 	@SuppressWarnings("unchecked")
 	public void sendActivityObject(JSONObject activityObj){
-	            out.println(activityObj.toJSONString());//·¢ËÍÊı¾İµ½·şÎñ¶Ë
+	            out.println(activityObj.toJSONString());//å‘é€æ•°æ®åˆ°æœåŠ¡ç«¯
 	            out.flush();//Flush () indicates that the data in the buffer is forced to be sent out 
 	                           //without waiting for the buffer to fill.
 	            log.info("Message sent");
@@ -92,65 +82,52 @@ public class ClientSkeleton extends Thread {
 			s.close();
 			log.info("connection is disconnect");
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}
 	
-
+    public JSONObject getResult() {
+    	JSONObject resJsonObj = null;
+	try {
+        String result = null;  
+        log.debug(result);
+        
+        while((result = in.readLine()) != null) {
+        	parser = new JSONParser();
+            resJsonObj = (JSONObject) parser.parse(result);
+    		log.info("Received from server: "+resJsonObj);              
+       }            
+    } catch (SocketException e) {  
+       log.info("Socket closed because the user typed exit");  
+    } catch (IOException e) {  
+        e.printStackTrace();  
+    } catch (ParseException e) {
+    	 e.printStackTrace();  
+	} catch (Exception e) {
+		e.printStackTrace();
+	}
+	return resJsonObj;
+    }
+	
 	public void run(){
 		//read message from server		
-//		log.info("listening for new connections on "+portnum);
-//		  while(!term){
-//		   Socket clientSocket;
-//		   try {
-//		    clientSocket = serverSocket.accept();
-//		    Control.getInstance().incomingConnection(clientSocket);
-//		   } catch (IOException e) {
-//		    log.info("received exception, shutting down");
-//		    term=true;
-//		   }
-//		  }
-		try {
-            String result = null;  
-            //result = in.readLine();
-            log.debug(result);
-            while((result = in.readLine()) != null) {
-            	JSONObject resJsonObj;
-            	parser = new JSONParser();
-                resJsonObj = (JSONObject) parser.parse(result);
-        		log.info("Received from server: "+resJsonObj);
-                textFrame.setOutputText(resJsonObj);    
-           }
-//            String data;
-//            boolean status = true;
-//            while (status && (data = in.readUTF()) != null) {
-//            	try {
-//            		log.debug("Receive data {}", data);
-//            		JsonParser parser = new JsonParser();
-//            		JsonObject json = parser.parse(data).getAsJsonObject();
-//            	}
-//            }
-            
-        } catch (SocketException e) {  
-           log.info("disconnect");  
-        } catch (IOException e) {  
-            e.printStackTrace();  
-        } catch (ParseException e) {
-
-		}          
+		JSONObject res = clientSolution.getResult();
+		textFrame.setOutputText(res); 
 			
 	}
+	
+	
+	
 //	@SuppressWarnings("unchecked")
-//	public void sendRegisterMessge() {
+//	public void parseResult(JSONObject msgJsonObj) {
 //		log.info("want to register", Settings.getUsername(),Settings.getSecret());
 //		JSONParser parser = new JSONParser();		
 //
-//			JSONObject msgJsonObj;
+//			JSONObject msg;
 //			try {
-//				msgJsonObj = (JSONObject) parser.parse(wt);
+//				msgJsonObj = (JSONObject) parser.parse();
 //				JSONObject newCommand = new JSONObject();
-//			    String command = (String) msgJsonObj.get("command");
+//			    String command = (String) msg.get("command");
 //			    String username = (String) msgJsonObj.get("username");
 //			    String secret = (String) msgJsonObj.get("secret");
 //			    newCommand.put("command", command);
@@ -164,7 +141,7 @@ public class ClientSkeleton extends Thread {
 //				
 //				e.printStackTrace();
 //			}
-		    
-
+//		    
+//
 //	}
 }
